@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <!-- Meta tag ini sangat penting agar tampilan menyesuaikan layar HP/Tablet -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Scan - Sensor Postur Jari</title>
+    
+    <!-- Memuat Tailwind CSS untuk styling responsif -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Memuat Library MediaPipe untuk Deteksi Tangan -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Header Aplikasi -->
+    <div class="text-center mb-6">
+        <h1 class="text-3xl font-bold text-emerald-400">Music Scan</h1>
+        <p class="text-slate-300">Deteksi Postur Jari Real-time</p>
+    </div>
+
+    <!-- Peringatan jika postur salah (Nantinya logika ini bisa kita kembangkan) -->
+    <div id="statusText" class="mb-4 text-lg font-semibold text-emerald-400">
+        Status: Menunggu Kamera...
+    </div>
+
+    <!-- Wadah Kamera & Canvas (Relatif agar menumpuk, responsif untuk semua layar) -->
+    <div class="relative w-full max-w-2xl bg-black rounded-xl overflow-hidden shadow-2xl border-2 border-slate-700">
+        
+        <!-- Video dari kamera (Disembunyikan dari pandangan langsung, kita pakai canvas) -->
+        <video id="input_video" class="hidden"></video>
+        
+        <!-- Canvas untuk menampilkan video beserta gambar kerangka tangan -->
+        <canvas id="output_canvas" class="w-full h-auto block"></canvas>
+        
+    </div>
+
+    <!-- Tombol Bantuan Sementara -->
+    <div class="mt-6 text-sm text-slate-400 text-center">
+        *Pastikan kamu memberikan izin (allow) akses kamera di browsermu.
+    </div>
+
+    <!-- Script Logika Deteksi -->
+    <script>
+        // 1. Mengambil elemen dari HTML
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusText = document.getElementById('statusText');
+
+        // 2. Fungsi ini dijalankan setiap kali MediaPipe menemukan tangan
+        function onResults(results) {
+            // Samakan ukuran canvas dengan ukuran asli video
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+
+            // Bersihkan frame sebelumnya
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Gambarkan ulang video ke dalam canvas
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Jika tangan terdeteksi
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                statusText.innerText = "Status: Postur Terdeteksi";
+                statusText.className = "mb-4 text-lg font-semibold text-emerald-400"; // Warna hijau
+
+                // Looping untuk setiap tangan yang terdeteksi
+                for (const landmarks of results.multiHandLandmarks) {
+                    // Menggambar garis penghubung (tulang)
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                        color: '#00FF00', // Warna garis hijau
+                        lineWidth: 4
+                    });
+                    
+                    // Menggambar titik-titik (sendi)
+                    drawLandmarks(canvasCtx, landmarks, {
+                        color: '#FF0000', // Warna titik merah
+                        lineWidth: 2, 
+                        radius: 3
+                    });
+                }
+            } else {
+                statusText.innerText = "Status: Tangan tidak terlihat";
+                statusText.className = "mb-4 text-lg font-semibold text-yellow-400"; // Warna kuning
+            }
+            canvasCtx.restore();
+        }
+
+        // 3. Konfigurasi MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        // Pengaturan akurasi dan jumlah tangan
+        hands.setOptions({
+            maxNumHands: 2, // Mendeteksi hingga 2 tangan
+            modelComplexity: 1, // Keseimbangan antara kecepatan (HP) dan akurasi
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // 4. Mengaktifkan Kamera
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280, // Resolusi internal, canvas akan menyesuaikan layar
+            height: 720
+        });
+        
+        camera.start()
+            .then(() => {
+                console.log("Kamera berhasil menyala");
+            })
+            .catch((err) => {
+                statusText.innerText = "Error: Kamera tidak dapat diakses!";
+                statusText.className = "mb-4 text-lg font-semibold text-red-500";
+            });
+    </script>
+</body>
+</html>
